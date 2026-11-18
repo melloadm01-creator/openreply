@@ -679,6 +679,7 @@ async function processComment(job: Job<ProcessCommentJob>): Promise<void> {
           // The ":open" marker tells a tap here apart from the follow prompt's
           // own "I'm following" button, which sends the same prefix.
           payload: `${automation.requireFollow ? "followcheck" : "reveal"}:${automation.id}:open`,
+          extraButtons: declineButtons(automation),
           postId: mediaId,
         });
       } else if (sendFollowPrompt) {
@@ -881,6 +882,123 @@ async function sendFollowRecheckAck({
   }
 }
 
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+type ConversationAutomation = {
+  id: string;
+  conversationEnabled: boolean;
+  conversationMessages: string[];
+  conversationButtonLabels: string[];
+  preLinkMessages: string[];
+  conversationDelaySeconds: number;
+  openingDmDeclineLabel: string | null;
+  openingDmDeclineMessage: string | null;
+};
+
+const cleanList = (list: string[] | null | undefined) =>
+  (list ?? []).map((item) => item.trim()).filter(Boolean);
+
+// The opening DM's optional "not for me" button. Only offered when there is a
+// reply to send on tap, so the button never leads to silence.
+function declineButtons(automation: ConversationAutomation) {
+  const title = automation.openingDmDeclineLabel?.trim();
+  if (!title || !automation.openingDmDeclineMessage?.trim()) return [];
+  return [{ title, payload: `decline:${automation.id}` }];
+}
+
+function conversationOf(automation: ConversationAutomation) {
+  const messages = cleanList(automation.conversationMessages);
+  if (!automation.conversationEnabled || messages.length === 0) return null;
+  return {
+    messages,
+    buttons: cleanList(automation.conversationButtonLabels).slice(0, 3),
+    preLink: cleanList(automation.preLinkMessages),
+    // Capped so a typo cannot hold a worker slot for minutes.
+    delayMs:
+      Math.max(0, Math.min(30, automation.conversationDelaySeconds ?? 6)) * 1000,
+  };
+}
+
+/**
+ * Send a run of conversation messages one after another, `delayMs` apart. The
+ * last one can carry postback buttons. Each message is claimed on its own, so a
+ * retried job resumes where it stopped instead of repeating what already went out.
+ */
+async function sendMessageRun({
+  context,
+  instagramAccountId,
+  userId,
+  commenterName,
+  operationId,
+  tag,
+  messages,
+  delayMs,
+  delayFirst = false,
+  buttons = [],
+  buttonPayload = "",
+}: {
+  context: InstagramContext;
+  instagramAccountId: string;
+  userId: string;
+  commenterName: string | null;
+  operationId: string;
+  tag: string;
+  messages: string[];
+  delayMs: number;
+  delayFirst?: boolean;
+  buttons?: string[];
+  buttonPayload?: string;
+}): Promise<void> {
+  for (let i = 0; i < messages.length; i++) {
+    if (i > 0 || delayFirst) await sleep(delayMs);
+    const text = renderMessageWithoutLink({ message: messages[i], commenterName });
+    const withButtons = i === messages.length - 1 && buttons.length > 0;
+    await sendPostbackOnce({
+      operationId: `${operationId}:${tag}${i}`,
+      send: () =>
+        withButtons
+          ? sendDirectMessageWithButton({
+              context,
+              instagramAccountId,
+              userId,
+              text,
+              buttonTitle: buttons[0],
+              payload: buttonPayload,
+              extraButtons: buttons
+                .slice(1)
+                .map((title) => ({ title, payload: buttonPayload })),
+            })
+          : sendDirectMessage({ context, instagramAccountId, userId, message: text }),
+    });
+  }
+}
+
+async function logButtonStep(
+  automation: { id: string; workspaceId: string; instagramAccountId: string },
+  userId: string,
+  commenterName: string | null,
+  step: "conversation" | "decline",
+) {
+  const commentId = `${step}:${userId}`;
+  await prisma.dmLog
+    .upsert({
+      where: { automationId_commentId: { automationId: automation.id, commentId } },
+      create: {
+        workspaceId: automation.workspaceId,
+        automationId: automation.id,
+        instagramAccountId: automation.instagramAccountId,
+        commenterId: userId,
+        commenterName,
+        commentText: "(button tap)",
+        commentId,
+        status: "SENT",
+        dmSentAt: new Date(),
+      },
+      update: { status: "SENT", dmSentAt: new Date(), errorMessage: null },
+    })
+    .catch(() => {});
+}
+
 /**
  * Deliver the reveal message after a user taps an opening DM's button.
  * The postback payload is `reveal:<automationId>`; the sender is the user's
@@ -889,14 +1007,16 @@ async function sendFollowRecheckAck({
 async function processPostback(job: Job<ProcessPostbackJob>): Promise<void> {
   const { instagramAccountId, userId, payload, fallback } = job.data;
 
+  const isDecline = payload.startsWith("decline:");
   const isFollowCheck = payload.startsWith("followcheck:");
-  if (!isFollowCheck && !payload.startsWith("reveal:")) return;
-  // The opening DM's button appends ":open" to the payload; the follow
-  // prompt's button does not. Automation ids are cuids and contain no colon.
+  if (!isDecline && !isFollowCheck && !payload.startsWith("reveal:")) return;
+  // The opening DM's button appends ":open" to the payload and a conversation
+  // button appends ":step"; the follow prompt's button appends nothing.
+  // Automation ids are cuids and contain no colon.
   const [automationId, marker] = payload
-    .slice(isFollowCheck ? "followcheck:".length : "reveal:".length)
+    .slice(payload.indexOf(":") + 1)
     .split(":");
-  const fromOpeningDm = marker === "open";
+  const fromOpeningDm = marker === "open" || marker === "step";
 
   const automation = await prisma.automation.findFirst({
     where: { id: automationId, isActive: true, ...connectionScope(job.data) },
@@ -963,6 +1083,61 @@ async function processPostback(job: Job<ProcessPostbackJob>): Promise<void> {
       job.data.mid ?? job.id ?? payload,
     ]))
     .digest("hex");
+
+  const conversation = conversationOf(automation);
+  const instagramId = automation.instagramAccount.instagramId;
+
+  // "Not for me" on the opening DM: answer once and stop the automated flow,
+  // so the conversation can be taken over by hand.
+  if (isDecline) {
+    if (fallback || !automation.openingDmDeclineMessage?.trim()) return;
+    const text = renderMessageWithoutLink({
+      message: automation.openingDmDeclineMessage,
+      commenterName,
+    });
+    const sent = await sendPostbackOnce({
+      operationId,
+      send: () =>
+        sendDirectMessage({ context: accessToken, instagramAccountId: instagramId, userId, message: text }),
+    });
+    if (sent) await logButtonStep(automation, userId, commenterName, "decline");
+    return;
+  }
+
+  // The read fallback skips ahead to the link. A campaign with a conversation
+  // waits for the taps instead, and nobody who said "not for me" gets the link.
+  if (fallback) {
+    if (conversation) return;
+    const declined = await prisma.dmLog.findUnique({
+      where: {
+        automationId_commentId: {
+          automationId: automation.id,
+          commentId: `decline:${userId}`,
+        },
+      },
+    });
+    if (declined) return;
+  }
+
+  // Opening tap on a campaign with a conversation: send the conversation
+  // messages; their buttons come back as `:step` and lead on to the link.
+  if (conversation && marker === "open") {
+    const prefix = automation.requireFollow ? "followcheck" : "reveal";
+    await sendMessageRun({
+      context: accessToken,
+      instagramAccountId: instagramId,
+      userId,
+      commenterName,
+      operationId,
+      tag: "c",
+      messages: conversation.messages,
+      delayMs: conversation.delayMs,
+      buttons: conversation.buttons,
+      buttonPayload: `${prefix}:${automation.id}:step`,
+    });
+    await logButtonStep(automation, userId, commenterName, "conversation");
+    if (conversation.buttons.length > 0) return;
+  }
 
   // Follow-gate: before revealing the link, verify the user follows. On a
   // `followcheck:` tap a non-follower gets the prompt again (no quota spent);
@@ -1079,6 +1254,22 @@ async function processPostback(job: Job<ProcessPostbackJob>): Promise<void> {
       }
       return;
     }
+  }
+
+  // Messages that lead into the link, sent right before it.
+  if (conversation && conversation.preLink.length > 0 && !fallback) {
+    await sendMessageRun({
+      context: accessToken,
+      instagramAccountId: instagramId,
+      userId,
+      commenterName,
+      operationId,
+      tag: "p",
+      messages: conversation.preLink,
+      delayMs: conversation.delayMs,
+      delayFirst: marker === "open",
+    });
+    await sleep(conversation.delayMs);
   }
 
   const usage = await reserveWorkspaceDMSend(automation.workspaceId);

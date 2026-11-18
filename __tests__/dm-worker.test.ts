@@ -629,7 +629,8 @@ describe("DM Worker — Full Pipeline", () => {
       "comment_555",
       "Follow me first commenter_user, then tap 👇",
       "I'm following ✅",
-      "followcheck:auto_789"
+      "followcheck:auto_789",
+      []
     );
     expect(mockSendPrivateReplyWithLinkButton).not.toHaveBeenCalled();
     expect(mockSendPrivateReply).not.toHaveBeenCalled();
@@ -703,7 +704,8 @@ describe("DM Worker — Full Pipeline", () => {
       "comment_555",
       "Hey commenter_user, welcome!",
       "Get the link",
-      "followcheck:auto_789:open"
+      "followcheck:auto_789:open",
+      []
     );
     // Follow status is verified on the tap, not at comment time.
     expect(mockGetUserFollowStatus).not.toHaveBeenCalled();
@@ -1121,7 +1123,8 @@ describe("DM Worker — DM keyword trigger", () => {
       "commenter_999",
       expect.any(String),
       "I'm following ✅",
-      "followcheck:auto_789"
+      "followcheck:auto_789",
+      []
     );
     expect(mockSendDirectMessage).not.toHaveBeenCalled();
   });
@@ -1585,7 +1588,8 @@ describe("DM Worker — follow-gate re-check", () => {
       "commenter_999",
       expect.any(String),
       expect.any(String),
-      "followcheck:auto_789"
+      "followcheck:auto_789",
+      []
     );
     expect(mockQueueAdd).not.toHaveBeenCalled();
     // Nor is it a rejection: they were never told to follow before this.
@@ -1763,4 +1767,180 @@ it("retains the public reply claim if sending succeeded but its log write failed
   await process({ ...createMockJob(), id: "next-poll" });
   expect(sendCommentReply).toHaveBeenCalledTimes(1);
   expect(mockSendPrivateReply).toHaveBeenCalledTimes(1);
+});
+
+describe("DM Worker — conversation before the link", () => {
+  const conversationAutomation = {
+    ...mockAutomation,
+    openingDmEnabled: true,
+    openingDmMessage: "Is this about your gym?",
+    openingDmButtonLabel: "Yes, it is",
+    openingDmDeclineLabel: "Not really",
+    openingDmDeclineMessage: "Tell me what you need.",
+    conversationEnabled: true,
+    conversationMessages: ["Block one", "Block two?"],
+    conversationButtonLabels: ["No, tell me", "Yes"],
+    preLinkMessages: ["The problem"],
+    conversationDelaySeconds: 0,
+    requireFollow: false,
+    trackedLinks: [],
+  };
+
+  it("offers the decline button on the opening DM", async () => {
+    mockPrisma.automation.findMany.mockResolvedValue([conversationAutomation]);
+    const processor = getProcessor();
+    await processor(createMockJob());
+
+    expect(mockSendPrivateReplyWithButton).toHaveBeenCalledWith(
+      "decrypted_token",
+      "ig_456",
+      "comment_555",
+      "Is this about your gym?",
+      "Yes, it is",
+      "reveal:auto_789:open",
+      [{ title: "Not really", payload: "decline:auto_789" }]
+    );
+  });
+
+  it("answers a decline tap once and sends no link", async () => {
+    mockPrisma.automation.findMany.mockResolvedValue([]);
+    mockPrisma.automation.findFirst.mockResolvedValue(conversationAutomation);
+    const processor = getProcessor();
+    await processor(
+      createMockPostbackJob({
+        instagramAccountId: "ig_456",
+        userId: "commenter_999",
+        payload: "decline:auto_789",
+      })
+    );
+
+    expect(mockSendDirectMessage).toHaveBeenCalledTimes(1);
+    expect(mockSendDirectMessage).toHaveBeenCalledWith(
+      "decrypted_token",
+      "ig_456",
+      "commenter_999",
+      "Tell me what you need."
+    );
+    expect(mockSendDirectMessageWithLinkButton).not.toHaveBeenCalled();
+    expect(mockReserveWorkspaceDMSend).not.toHaveBeenCalled();
+    expect(mockPrisma.dmLog.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          automationId_commentId: {
+            automationId: "auto_789",
+            commentId: "decline:commenter_999",
+          },
+        },
+      })
+    );
+  });
+
+  it("sends the conversation blocks on the opening tap, with the question buttons last", async () => {
+    mockPrisma.automation.findMany.mockResolvedValue([]);
+    mockPrisma.automation.findFirst.mockResolvedValue(conversationAutomation);
+    const processor = getProcessor();
+    await processor(
+      createMockPostbackJob({
+        instagramAccountId: "ig_456",
+        userId: "commenter_999",
+        payload: "reveal:auto_789:open",
+      })
+    );
+
+    expect(mockSendDirectMessage).toHaveBeenCalledWith(
+      "decrypted_token",
+      "ig_456",
+      "commenter_999",
+      "Block one"
+    );
+    expect(mockSendDirectMessageWithButton).toHaveBeenCalledWith(
+      "decrypted_token",
+      "ig_456",
+      "commenter_999",
+      "Block two?",
+      "No, tell me",
+      "reveal:auto_789:step",
+      [{ title: "Yes", payload: "reveal:auto_789:step" }]
+    );
+    expect(mockSendDirectMessage.mock.invocationCallOrder[0]).toBeLessThan(
+      mockSendDirectMessageWithButton.mock.invocationCallOrder[0]
+    );
+    // The link waits for the answer to the question.
+    expect(mockReserveWorkspaceDMSend).not.toHaveBeenCalled();
+    expect(mockSendDirectMessageWithLinkButton).not.toHaveBeenCalled();
+  });
+
+  it("sends the pre-link messages and then the link on the step tap", async () => {
+    mockPrisma.automation.findMany.mockResolvedValue([]);
+    mockPrisma.automation.findFirst.mockResolvedValue(conversationAutomation);
+    const processor = getProcessor();
+    await processor(
+      createMockPostbackJob({
+        instagramAccountId: "ig_456",
+        userId: "commenter_999",
+        payload: "reveal:auto_789:step",
+      })
+    );
+
+    expect(mockSendDirectMessage).toHaveBeenNthCalledWith(
+      1,
+      "decrypted_token",
+      "ig_456",
+      "commenter_999",
+      "The problem"
+    );
+    expect(mockSendDirectMessage).toHaveBeenNthCalledWith(
+      2,
+      "decrypted_token",
+      "ig_456",
+      "commenter_999",
+      "Hey commenter_user! Here is the link: https://example.com"
+    );
+    expect(mockSendDirectMessageWithButton).not.toHaveBeenCalled();
+    expect(mockReserveWorkspaceDMSend).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not skip the conversation on a read fallback", async () => {
+    mockPrisma.automation.findMany.mockResolvedValue([]);
+    mockPrisma.automation.findFirst.mockResolvedValue(conversationAutomation);
+    const processor = getProcessor();
+    await processor(
+      createMockPostbackJob({
+        instagramAccountId: "ig_456",
+        userId: "commenter_999",
+        payload: "reveal:auto_789",
+        fallback: true,
+      })
+    );
+
+    expect(mockSendDirectMessage).not.toHaveBeenCalled();
+    expect(mockSendDirectMessageWithButton).not.toHaveBeenCalled();
+    expect(mockReserveWorkspaceDMSend).not.toHaveBeenCalled();
+  });
+
+  it("gives no link from a read fallback to someone who declined", async () => {
+    mockPrisma.automation.findMany.mockResolvedValue([]);
+    mockPrisma.automation.findFirst.mockResolvedValue({
+      ...conversationAutomation,
+      conversationEnabled: false,
+    });
+    mockPrisma.dmLog.findUnique.mockImplementation(
+      async (args: { where: { automationId_commentId: { commentId: string } } }) =>
+        args.where.automationId_commentId.commentId === "decline:commenter_999"
+          ? { id: "declined", status: "SENT" }
+          : null
+    );
+    const processor = getProcessor();
+    await processor(
+      createMockPostbackJob({
+        instagramAccountId: "ig_456",
+        userId: "commenter_999",
+        payload: "reveal:auto_789",
+        fallback: true,
+      })
+    );
+
+    expect(mockSendDirectMessage).not.toHaveBeenCalled();
+    expect(mockReserveWorkspaceDMSend).not.toHaveBeenCalled();
+  });
 });

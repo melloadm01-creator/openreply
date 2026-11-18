@@ -103,6 +103,7 @@ export async function sendPrivateReplyWithButton({
   text,
   buttonTitle,
   payload,
+  extraButtons = [],
   postId,
 }: {
   context: InstagramContext;
@@ -111,6 +112,7 @@ export async function sendPrivateReplyWithButton({
   text: string;
   buttonTitle: string;
   payload: string;
+  extraButtons?: meta.PostbackButton[];
   postId?: string;
 }) {
   if (context.provider === "META")
@@ -120,14 +122,17 @@ export async function sendPrivateReplyWithButton({
       commentId,
       text,
       buttonTitle,
-      payload
+      payload,
+      extraButtons
     );
   return sendZernioMessage({
     context,
     commentId,
     postId,
     text: text,
-    buttons: [{ type: "postback", title: buttonTitle.slice(0, 20), payload }],
+    buttons: [{ title: buttonTitle, payload }, ...extraButtons]
+      .slice(0, 3)
+      .map((b) => ({ type: "postback" as const, title: b.title.slice(0, 20), payload: b.payload })),
   });
 }
 
@@ -138,6 +143,7 @@ export async function sendDirectMessageWithButton({
   text,
   buttonTitle,
   payload,
+  extraButtons = [],
 }: {
   context: InstagramContext;
   instagramAccountId: string;
@@ -145,6 +151,7 @@ export async function sendDirectMessageWithButton({
   text: string;
   buttonTitle: string;
   payload: string;
+  extraButtons?: meta.PostbackButton[];
 }) {
   if (context.provider === "META")
     return meta.sendDirectMessageWithButton(
@@ -153,13 +160,16 @@ export async function sendDirectMessageWithButton({
       userId,
       text,
       buttonTitle,
-      payload
+      payload,
+      extraButtons
     );
   return sendZernioMessage({
     context,
     recipientId: userId,
     text: text,
-    buttons: [{ type: "postback", title: buttonTitle.slice(0, 20), payload }],
+    buttons: [{ title: buttonTitle, payload }, ...extraButtons]
+      .slice(0, 3)
+      .map((b) => ({ type: "postback" as const, title: b.title.slice(0, 20), payload: b.payload })),
   });
 }
 

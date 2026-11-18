@@ -43,6 +43,13 @@ interface LoadedCampaign {
   openingDmEnabled: boolean;
   openingDmMessage: string | null;
   openingDmButtonLabel: string | null;
+  openingDmDeclineLabel?: string | null;
+  openingDmDeclineMessage?: string | null;
+  conversationEnabled?: boolean;
+  conversationMessages?: string[];
+  conversationButtonLabels?: string[];
+  preLinkMessages?: string[];
+  conversationDelaySeconds?: number;
   linkButtonLabel: string | null;
   requireFollow: boolean;
   followPromptMessage: string | null;
@@ -104,6 +111,64 @@ function Radio({
       </span>
       <span className="flex-1 text-foreground">{children}</span>
     </button>
+  );
+}
+
+// Up to `max` short messages edited one per box, sent in order.
+function MessageList({
+  values,
+  onChange,
+  max,
+  placeholder,
+  addLabel,
+  removeLabel,
+}: {
+  values: string[];
+  onChange: (next: string[]) => void;
+  max: number;
+  placeholder: string;
+  addLabel: string;
+  removeLabel: string;
+}) {
+  const list = values.length > 0 ? values : [""];
+  return (
+    <div className="space-y-2">
+      {list.map((value, index) => (
+        <div key={index} className="space-y-1">
+          <textarea
+            value={value}
+            onChange={(e) =>
+              onChange(list.map((v, i) => (i === index ? e.target.value : v)))
+            }
+            placeholder={placeholder}
+            rows={3}
+            className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground placeholder:text-zinc-500 focus:border-accent/40 focus:outline-none resize-none"
+            maxLength={1000}
+          />
+          <div className="flex items-center justify-between text-xs text-muted">
+            <span>{value.length}</span>
+            {list.length > 1 && (
+              <button
+                type="button"
+                onClick={() => onChange(list.filter((_, i) => i !== index))}
+                className="hover:underline"
+              >
+                {removeLabel}
+              </button>
+            )}
+          </div>
+        </div>
+      ))}
+      {list.length < max && (
+        <button
+          type="button"
+          onClick={() => onChange([...list, ""])}
+          className="text-xs font-medium text-accent hover:underline"
+        >
+          {addLabel}
+        </button>
+      )}
+    </div>
   );
 }
 
@@ -169,6 +234,13 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
   const [openingDmEnabled, setOpeningDmEnabled] = useState(false);
   const [openingDmMessage, setOpeningDmMessage] = useState("");
   const [openingDmButtonLabel, setOpeningDmButtonLabel] = useState("");
+  const [openingDmDeclineLabel, setOpeningDmDeclineLabel] = useState("");
+  const [openingDmDeclineMessage, setOpeningDmDeclineMessage] = useState("");
+  const [conversationEnabled, setConversationEnabled] = useState(false);
+  const [conversationMessages, setConversationMessages] = useState<string[]>([""]);
+  const [conversationButtonLabels, setConversationButtonLabels] = useState<string[]>(["", ""]);
+  const [preLinkMessages, setPreLinkMessages] = useState<string[]>([""]);
+  const [conversationDelaySeconds, setConversationDelaySeconds] = useState(6);
 
   const [dmMessage, setDmMessage] = useState("");
   const [linkOpen, setLinkOpen] = useState(false);
@@ -275,6 +347,18 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
         setOpeningDmEnabled(c.openingDmEnabled);
         setOpeningDmMessage(c.openingDmMessage ?? "");
         setOpeningDmButtonLabel(c.openingDmButtonLabel ?? "");
+        setOpeningDmDeclineLabel(c.openingDmDeclineLabel ?? "");
+        setOpeningDmDeclineMessage(c.openingDmDeclineMessage ?? "");
+        setConversationEnabled(c.conversationEnabled ?? false);
+        setConversationMessages(
+          c.conversationMessages?.length ? c.conversationMessages : [""]
+        );
+        setConversationButtonLabels([
+          c.conversationButtonLabels?.[0] ?? "",
+          c.conversationButtonLabels?.[1] ?? "",
+        ]);
+        setPreLinkMessages(c.preLinkMessages?.length ? c.preLinkMessages : [""]);
+        setConversationDelaySeconds(c.conversationDelaySeconds ?? 6);
         setDmMessage(c.dmMessage);
         setLinkButtonLabel(c.linkButtonLabel ?? "Open link");
         setIsActive(c.isActive);
@@ -399,6 +483,13 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
     if (!dmMessage.trim()) return setError(t("Add the DM with the link."));
     if (openingDmEnabled && (!openingDmMessage.trim() || !openingDmButtonLabel.trim()))
       return setError(t("Your opening DM needs a message and a button label."));
+    const useConversation = openingDmEnabled && conversationEnabled;
+    if (
+      useConversation &&
+      (!conversationMessages.some((m) => m.trim()) ||
+        !conversationButtonLabels.some((b) => b.trim()))
+    )
+      return setError(t("The conversation needs at least one message and one button."));
 
     setSaving(true);
 
@@ -417,6 +508,19 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
       openingDmEnabled,
       openingDmMessage: openingDmEnabled ? openingDmMessage : null,
       openingDmButtonLabel: openingDmEnabled ? openingDmButtonLabel : null,
+      openingDmDeclineLabel: openingDmEnabled ? openingDmDeclineLabel.trim() || null : null,
+      openingDmDeclineMessage: openingDmEnabled ? openingDmDeclineMessage.trim() || null : null,
+      conversationEnabled: useConversation,
+      conversationMessages: useConversation
+        ? conversationMessages.map((m) => m.trim()).filter(Boolean)
+        : [],
+      conversationButtonLabels: useConversation
+        ? conversationButtonLabels.map((b) => b.trim()).filter(Boolean)
+        : [],
+      preLinkMessages: useConversation
+        ? preLinkMessages.map((m) => m.trim()).filter(Boolean)
+        : [],
+      conversationDelaySeconds,
       publicReplyEnabled,
       publicReplyMessages: publicReplyEnabled
         ? publicReplyMessages.map((m) => m.trim()).filter(Boolean)
@@ -840,9 +944,104 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
                   className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground placeholder:text-zinc-500 focus:border-accent/40 focus:outline-none"
                   maxLength={64}
                 />
+                <input
+                  value={openingDmDeclineLabel}
+                  onChange={(e) => setOpeningDmDeclineLabel(e.target.value)}
+                  placeholder={t("Second button (optional), e.g. Not for me")}
+                  className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground placeholder:text-zinc-500 focus:border-accent/40 focus:outline-none"
+                  maxLength={20}
+                />
+                {openingDmDeclineLabel.trim() && (
+                  <>
+                    <textarea
+                      value={openingDmDeclineMessage}
+                      onChange={(e) => setOpeningDmDeclineMessage(e.target.value)}
+                      placeholder={t("No problem! Tell me what you need and I'll answer here.")}
+                      rows={2}
+                      className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground placeholder:text-zinc-500 focus:border-accent/40 focus:outline-none resize-none"
+                      maxLength={1000}
+                    />
+                    <p className="text-xs text-muted">
+                      {t("Tapping the second button sends this reply and stops the automation, so you can answer by hand.")}
+                    </p>
+                  </>
+                )}
               </div>
             )}
           </div>
+          {openingDmEnabled && (
+            <div className="mt-3 rounded-lg border border-border p-3">
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-foreground">
+                  {t("a conversation before the link")}
+                </span>
+                <Toggle
+                  on={conversationEnabled}
+                  onToggle={() => setConversationEnabled(!conversationEnabled)}
+                />
+              </div>
+              {conversationEnabled && (
+                <div className="mt-3 space-y-3">
+                  <p className="text-xs text-muted">
+                    {t("After the opening tap, these go out one by one. The last one carries the buttons.")}
+                  </p>
+                  <MessageList
+                    values={conversationMessages}
+                    onChange={setConversationMessages}
+                    max={3}
+                    placeholder={t("Conversation message")}
+                    addLabel={t("+ Add a message")}
+                    removeLabel={t("Remove")}
+                  />
+                  <div className="grid grid-cols-2 gap-2">
+                    {[0, 1].map((index) => (
+                      <input
+                        key={index}
+                        value={conversationButtonLabels[index] ?? ""}
+                        onChange={(e) =>
+                          setConversationButtonLabels((prev) =>
+                            [0, 1].map((i) => (i === index ? e.target.value : prev[i] ?? ""))
+                          )
+                        }
+                        placeholder={index === 0 ? t("Button 1") : t("Button 2 (optional)")}
+                        className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground placeholder:text-zinc-500 focus:border-accent/40 focus:outline-none"
+                        maxLength={20}
+                      />
+                    ))}
+                  </div>
+                  <p className="text-xs text-muted">
+                    {t("Any button leads on. Then these go out right before the link:")}
+                  </p>
+                  <MessageList
+                    values={preLinkMessages}
+                    onChange={setPreLinkMessages}
+                    max={3}
+                    placeholder={t("Message before the link (optional)")}
+                    addLabel={t("+ Add a message")}
+                    removeLabel={t("Remove")}
+                  />
+                  <div className="flex flex-wrap items-center gap-2 text-sm text-foreground">
+                    <input
+                      type="number"
+                      min={0}
+                      max={30}
+                      value={conversationDelaySeconds}
+                      onChange={(e) =>
+                        setConversationDelaySeconds(
+                          Math.max(0, Math.min(30, Math.floor(Number(e.target.value) || 0)))
+                        )
+                      }
+                      className="w-20 rounded-lg border border-border bg-surface px-2 py-1 text-sm text-foreground focus:border-accent/40 focus:outline-none"
+                    />
+                    <span className="text-xs text-muted">{t("seconds between messages")}</span>
+                  </div>
+                  <p className="text-xs text-muted">
+                    {t("Instagram cuts a message with buttons at 640 characters and a button at 20.")}
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
           <div className="mt-3 rounded-lg border border-border p-3">
             <div className="flex items-center justify-between">
               <span className="text-sm text-foreground">

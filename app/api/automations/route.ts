@@ -24,6 +24,8 @@ import {
 // immediately), so never cache it at the route or CDN layer.
 export const dynamic = "force-dynamic";
 
+const cleanList = (list: string[]) => list.map((m) => m.trim()).filter(Boolean);
+
 const createAutomationSchema = z
   .object({
     name: z.string().min(1).max(100),
@@ -40,6 +42,13 @@ const createAutomationSchema = z
     openingDmEnabled: z.boolean().optional().default(false),
     openingDmMessage: z.string().max(1000).optional().nullable(),
     openingDmButtonLabel: z.string().max(64).optional().nullable(),
+    openingDmDeclineLabel: z.string().max(20).optional().nullable(),
+    openingDmDeclineMessage: z.string().max(1000).optional().nullable(),
+    conversationEnabled: z.boolean().optional().default(false),
+    conversationMessages: z.array(z.string().max(1000)).max(3).optional().default([]),
+    conversationButtonLabels: z.array(z.string().max(20)).max(3).optional().default([]),
+    preLinkMessages: z.array(z.string().max(1000)).max(3).optional().default([]),
+    conversationDelaySeconds: z.number().int().min(0).max(30).optional().default(6),
     linkButtonLabel: z.string().max(20).optional().nullable(),
     requireFollow: z.boolean().optional().default(false),
     followPromptMessage: z.string().max(1000).optional().nullable(),
@@ -87,6 +96,18 @@ const createAutomationSchema = z
       (Boolean(d.openingDmMessage?.trim()) &&
         Boolean(d.openingDmButtonLabel?.trim())),
     { message: "Opening DM needs a message and a button label", path: ["openingDmMessage"] }
+  )
+  // A conversation runs after the opening tap and needs a message and a button.
+  .refine(
+    (d) =>
+      !d.conversationEnabled ||
+      (d.openingDmEnabled &&
+        d.conversationMessages.some((m) => m.trim()) &&
+        d.conversationButtonLabels.some((b) => b.trim())),
+    {
+      message: "A conversation needs the opening DM, at least one message and one button",
+      path: ["conversationMessages"],
+    }
   );
 
 const updateAutomationSchema = z.object({
@@ -104,6 +125,13 @@ const updateAutomationSchema = z.object({
   openingDmEnabled: z.boolean().optional(),
   openingDmMessage: z.string().max(1000).optional().nullable(),
   openingDmButtonLabel: z.string().max(64).optional().nullable(),
+  openingDmDeclineLabel: z.string().max(20).optional().nullable(),
+  openingDmDeclineMessage: z.string().max(1000).optional().nullable(),
+  conversationEnabled: z.boolean().optional(),
+  conversationMessages: z.array(z.string().max(1000)).max(3).optional(),
+  conversationButtonLabels: z.array(z.string().max(20)).max(3).optional(),
+  preLinkMessages: z.array(z.string().max(1000)).max(3).optional(),
+  conversationDelaySeconds: z.number().int().min(0).max(30).optional(),
   linkButtonLabel: z.string().max(20).optional().nullable(),
   requireFollow: z.boolean().optional(),
   followPromptMessage: z.string().max(1000).optional().nullable(),
@@ -392,6 +420,26 @@ export async function POST(request: NextRequest) {
       openingDmButtonLabel: openingDmEnabled
         ? parsed.data.openingDmButtonLabel || null
         : null,
+      openingDmDeclineLabel: openingDmEnabled
+        ? parsed.data.openingDmDeclineLabel?.trim() || null
+        : null,
+      openingDmDeclineMessage: openingDmEnabled
+        ? parsed.data.openingDmDeclineMessage?.trim() || null
+        : null,
+      conversationEnabled: openingDmEnabled && parsed.data.conversationEnabled,
+      conversationMessages:
+        openingDmEnabled && parsed.data.conversationEnabled
+          ? cleanList(parsed.data.conversationMessages)
+          : [],
+      conversationButtonLabels:
+        openingDmEnabled && parsed.data.conversationEnabled
+          ? cleanList(parsed.data.conversationButtonLabels)
+          : [],
+      preLinkMessages:
+        openingDmEnabled && parsed.data.conversationEnabled
+          ? cleanList(parsed.data.preLinkMessages)
+          : [],
+      conversationDelaySeconds: parsed.data.conversationDelaySeconds,
       linkButtonLabel: parsed.data.linkButtonLabel || null,
       requireFollow: parsed.data.requireFollow,
       followPromptMessage: parsed.data.requireFollow
@@ -515,6 +563,35 @@ export async function PATCH(request: NextRequest) {
   if (automationData.openingDmEnabled === false) {
     automationData.openingDmMessage = null;
     automationData.openingDmButtonLabel = null;
+    automationData.openingDmDeclineLabel = null;
+    automationData.openingDmDeclineMessage = null;
+    automationData.conversationEnabled = false;
+  }
+  if (automationData.openingDmDeclineLabel !== undefined)
+    automationData.openingDmDeclineLabel = automationData.openingDmDeclineLabel?.trim() || null;
+  if (automationData.openingDmDeclineMessage !== undefined)
+    automationData.openingDmDeclineMessage = automationData.openingDmDeclineMessage?.trim() || null;
+  for (const key of ["conversationMessages", "conversationButtonLabels", "preLinkMessages"] as const) {
+    const list = automationData[key];
+    if (list !== undefined) automationData[key] = cleanList(list);
+  }
+  if (automationData.conversationEnabled === false) {
+    automationData.conversationMessages = [];
+    automationData.conversationButtonLabels = [];
+    automationData.preLinkMessages = [];
+  }
+  if (
+    automationData.conversationEnabled === true &&
+    (!automationData.conversationMessages?.length ||
+      !automationData.conversationButtonLabels?.length)
+  ) {
+    return NextResponse.json(
+      {
+        success: false,
+        error: "A conversation needs at least one message and one button",
+      },
+      { status: 400 }
+    );
   }
   if (automationData.requireFollow === false) {
     automationData.followPromptMessage = null;

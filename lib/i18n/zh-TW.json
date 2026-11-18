@@ -468,5 +468,19 @@
   "{name} Campaign Report": "{name} 活動報表",
   "{type} post": "{type} 貼文",
   "”": "」",
-  "← Campaigns": "← 返回活動列表"
+  "← Campaigns": "← 返回活動列表",
+  "+ Add a message": "+ 新增訊息",
+  "After the opening tap, these go out one by one. The last one carries the buttons.": "點了開場訊息後，這些訊息會逐則送出，最後一則附上按鈕。",
+  "Any button leads on. Then these go out right before the link:": "任何按鈕都會繼續。接著在連結前送出這些訊息：",
+  "Button 1": "按鈕 1",
+  "Button 2 (optional)": "按鈕 2（選填）",
+  "Conversation message": "對話訊息",
+  "Instagram cuts a message with buttons at 640 characters and a button at 20.": "Instagram 會把附按鈕的訊息截在 640 個字元，按鈕截在 20 個字元。",
+  "Message before the link (optional)": "連結前的訊息（選填）",
+  "No problem! Tell me what you need and I'll answer here.": "沒問題！告訴我你需要什麼，我會在這裡回覆你。",
+  "Second button (optional), e.g. Not for me": "第二個按鈕（選填），例如：不是我要的",
+  "Tapping the second button sends this reply and stops the automation, so you can answer by hand.": "點第二個按鈕的人會收到這則回覆，自動化會停止，讓你親自回覆。",
+  "The conversation needs at least one message and one button.": "對話至少需要一則訊息和一個按鈕。",
+  "a conversation before the link": "連結前的對話",
+  "seconds between messages": "訊息之間的秒數"
 }
