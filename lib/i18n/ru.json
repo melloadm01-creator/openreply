@@ -468,5 +468,19 @@
   "{name} Campaign Report": "Отчёт по кампании «{name}»",
   "{type} post": "Пост {type}",
   "”": "»",
-  "← Campaigns": "← Кампании"
+  "← Campaigns": "← Кампании",
+  "+ Add a message": "+ Добавить сообщение",
+  "After the opening tap, these go out one by one. The last one carries the buttons.": "После нажатия в первом сообщении они уходят по одному. Последнее несёт кнопки.",
+  "Any button leads on. Then these go out right before the link:": "Любая кнопка ведёт дальше. Затем перед ссылкой уходят эти сообщения:",
+  "Button 1": "Кнопка 1",
+  "Button 2 (optional)": "Кнопка 2 (необязательно)",
+  "Conversation message": "Сообщение разговора",
+  "Instagram cuts a message with buttons at 640 characters and a button at 20.": "Instagram обрезает сообщение с кнопками до 640 символов, а кнопку до 20.",
+  "Message before the link (optional)": "Сообщение перед ссылкой (необязательно)",
+  "No problem! Tell me what you need and I'll answer here.": "Без проблем! Напишите, что вам нужно, и я отвечу здесь.",
+  "Second button (optional), e.g. Not for me": "Вторая кнопка (необязательно), напр.: Это не то",
+  "Tapping the second button sends this reply and stops the automation, so you can answer by hand.": "Нажатие второй кнопки отправляет этот ответ и останавливает автоматизацию, чтобы вы ответили вручную.",
+  "The conversation needs at least one message and one button.": "Разговору нужно хотя бы одно сообщение и одна кнопка.",
+  "a conversation before the link": "разговор перед ссылкой",
+  "seconds between messages": "секунд между сообщениями"
 }

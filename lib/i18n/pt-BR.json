@@ -468,5 +468,19 @@
   "{name} Campaign Report": "Relatório da campanha {name}",
   "{type} post": "Publicação {type}",
   "”": "”",
-  "← Campaigns": "← Campanhas"
+  "← Campaigns": "← Campanhas",
+  "+ Add a message": "+ Adicionar mensagem",
+  "After the opening tap, these go out one by one. The last one carries the buttons.": "Depois do toque na abertura, estas saem uma por uma. A última leva os botões.",
+  "Any button leads on. Then these go out right before the link:": "Qualquer botão segue em frente. Depois, estas saem logo antes do link:",
+  "Button 1": "Botão 1",
+  "Button 2 (optional)": "Botão 2 (opcional)",
+  "Conversation message": "Mensagem da conversa",
+  "Instagram cuts a message with buttons at 640 characters and a button at 20.": "O Instagram corta mensagem com botão em 640 caracteres e botão em 20.",
+  "Message before the link (optional)": "Mensagem antes do link (opcional)",
+  "No problem! Tell me what you need and I'll answer here.": "Tranquilo! Me conta o que você precisa que eu te respondo por aqui.",
+  "Second button (optional), e.g. Not for me": "Segundo botão (opcional), ex.: Não é isso",
+  "Tapping the second button sends this reply and stops the automation, so you can answer by hand.": "Quem tocar no segundo botão recebe esta resposta e a automação para, pra você responder no manual.",
+  "The conversation needs at least one message and one button.": "A conversa precisa de pelo menos uma mensagem e um botão.",
+  "a conversation before the link": "uma conversa antes do link",
+  "seconds between messages": "segundos entre as mensagens"
 }

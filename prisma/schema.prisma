@@ -205,6 +205,20 @@ model Automation {
   openingDmEnabled     Boolean @default(false)
   openingDmMessage     String?
   openingDmButtonLabel String?
+  // Optional second button on the opening DM ("not for me"). Tapping it sends
+  // openingDmDeclineMessage and ends the automated flow, so a person can take
+  // the conversation over by hand.
+  openingDmDeclineLabel   String?
+  openingDmDeclineMessage String?
+  // Optional conversation between the opening DM and the link. After the
+  // opening tap, conversationMessages go out one by one, conversationDelaySeconds
+  // apart; the last one carries conversationButtonLabels (every button leads on).
+  // On that tap, preLinkMessages go out the same way, then the link DM.
+  conversationEnabled      Boolean  @default(false)
+  conversationMessages     String[] @default([])
+  conversationButtonLabels String[] @default([])
+  preLinkMessages          String[] @default([])
+  conversationDelaySeconds Int      @default(6)
   linkButtonLabel      String?
   requireFollow           Boolean @default(false)
   followPromptMessage     String?

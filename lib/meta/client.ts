@@ -191,13 +191,27 @@ export async function sendPrivateReply(
  * a `messaging_postbacks` webhook carrying `payload`, which we use to deliver
  * the follow-up ("reveal") message.
  */
+export type PostbackButton = { title: string; payload: string };
+
+// A button template holds at most 3 buttons, each title capped at 20 chars.
+function postbackButtons(
+  buttonTitle: string,
+  payload: string,
+  extraButtons: PostbackButton[]
+) {
+  return [{ title: buttonTitle, payload }, ...extraButtons]
+    .slice(0, 3)
+    .map((b) => ({ type: "postback", title: b.title.slice(0, 20), payload: b.payload }));
+}
+
 export async function sendPrivateReplyWithButton(
   accessToken: string,
   instagramAccountId: string,
   commentId: string,
   text: string,
   buttonTitle: string,
-  payload: string
+  payload: string,
+  extraButtons: PostbackButton[] = []
 ): Promise<{ recipient_id: string; message_id: string }> {
   const response = await fetch(
     `${instagramGraphBase()}/${instagramAccountId}/messages`,
@@ -216,9 +230,7 @@ export async function sendPrivateReplyWithButton(
               template_type: "button",
               // Button template text is capped at 640 chars by Meta.
               text: text.slice(0, 640),
-              buttons: [
-                { type: "postback", title: buttonTitle.slice(0, 20), payload },
-              ],
+              buttons: postbackButtons(buttonTitle, payload, extraButtons),
             },
           },
         },
@@ -240,7 +252,8 @@ export async function sendDirectMessageWithButton(
   userId: string,
   text: string,
   buttonTitle: string,
-  payload: string
+  payload: string,
+  extraButtons: PostbackButton[] = []
 ): Promise<{ recipient_id: string; message_id: string }> {
   const response = await fetch(
     `${instagramGraphBase()}/${instagramAccountId}/messages`,
@@ -258,9 +271,7 @@ export async function sendDirectMessageWithButton(
             payload: {
               template_type: "button",
               text: text.slice(0, 640),
-              buttons: [
-                { type: "postback", title: buttonTitle.slice(0, 20), payload },
-              ],
+              buttons: postbackButtons(buttonTitle, payload, extraButtons),
             },
           },
         },
